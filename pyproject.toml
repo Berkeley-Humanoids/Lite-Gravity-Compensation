@@ -1,0 +1,18 @@
+[project]
+name = "test-gravity-comp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "lite-sdk2",
+    "loop-rate-limiters>=1.2.0",
+    "mink>=1.1.0",
+    "mujoco>=3.6.0",
+    "numpy>=2.4.4",
+    "robot-descriptions",
+]
+
+[tool.uv.sources]
+robot-descriptions = { git = "ssh://git@github.com/T-K-233/Robot-Descriptions.git" }
+lite-sdk2 = { git = "https://github.com/T-K-233/Lite-SDK2-Python.git" }
