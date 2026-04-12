@@ -14,7 +14,7 @@ from robot_descriptions import load_asset
 
 
 MODEL_ASSETS = {
-    "lite_dummy": "robots/lite_dummy/mjcf/scene.xml",
+    "lite_dummy": "robots/lite_dummy/mjcf/lite.xml",
 }
 DEFAULT_MODEL = "lite_dummy"
 DEFAULT_POSE_BODY = "head"

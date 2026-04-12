@@ -21,7 +21,7 @@ except ImportError:
 
 
 MODEL_ASSETS = {
-    "lite_dummy": "robots/lite_dummy/mjcf/scene.xml",
+    "lite_dummy": "robots/lite_dummy/mjcf/lite.xml",
 }
 DEFAULT_MODEL = "lite_dummy"
 DEFAULT_CONTROL_MODE = 1
