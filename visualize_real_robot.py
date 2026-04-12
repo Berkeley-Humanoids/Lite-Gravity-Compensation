@@ -15,10 +15,10 @@ from robot_descriptions import load_asset
 
 MODEL_ASSETS = {
     "lite_dummy": "robots/lite_dummy/mjcf/scene.xml",
-    "lite": "robots/lite/mjcf/lite.xml",
 }
 DEFAULT_MODEL = "lite_dummy"
 DEFAULT_POSE_BODY = "head"
+NONE_CONFIGURATION = getattr(LowLevelConfiguration, "NONE", None)
 
 
 def _load_model_asset(model_name: str) -> str:
@@ -40,6 +40,8 @@ def _joint_order_for_configuration(
     configuration: LowLevelConfiguration,
     model_joint_names: list[str],
 ) -> list[str]:
+    if NONE_CONFIGURATION is not None and configuration is NONE_CONFIGURATION:
+        return []
     if configuration is LowLevelConfiguration.FULL_BODY_WITH_FINGERS:
         return list(model_joint_names)
     if configuration is LowLevelConfiguration.FULL_BODY:
@@ -58,15 +60,28 @@ def _joint_order_for_configuration(
 def _resolve_configuration(
     config_value: int | None,
     override: str | None,
-) -> LowLevelConfiguration:
+) -> LowLevelConfiguration | None:
     if override is not None:
-        return LowLevelConfiguration[override]
-    if config_value is None:
-        raise ValueError(
-            "The incoming low-state sample did not include a configuration value. "
-            "Pass --configuration to choose the actuator ordering explicitly."
-        )
-    return LowLevelConfiguration(config_value)
+        configuration = LowLevelConfiguration[override]
+    else:
+        if config_value is None:
+            raise ValueError(
+                "The incoming low-state sample did not include a configuration value. "
+                "Pass --configuration to choose the actuator ordering explicitly."
+            )
+        configuration = LowLevelConfiguration(config_value)
+
+    if NONE_CONFIGURATION is not None and configuration is NONE_CONFIGURATION:
+        return None
+    return configuration
+
+
+def _configuration_choices() -> list[str]:
+    return [
+        configuration.name
+        for configuration in LowLevelConfiguration
+        if NONE_CONFIGURATION is None or configuration is not NONE_CONFIGURATION
+    ]
 
 
 def _build_model_joint_lookup(model: mujoco.MjModel) -> tuple[dict[str, int], list[str]]:
@@ -125,7 +140,6 @@ def _make_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pose-body", default=DEFAULT_POSE_BODY)
     parser.add_argument("--viewer-hz", type=float, default=120.0)
     parser.add_argument("--print-hz", type=float, default=2.0)
-    parser.add_argument("--joint-scale", type=float, default=1.0)
     parser.add_argument("--domain-id", type=int, default=0, help="CycloneDDS domain ID to join.")
     parser.add_argument("--topic", default=DEFAULT_LOWSTATE_TOPIC, help="ROS topic name for LowState samples.")
     parser.add_argument(
@@ -136,7 +150,7 @@ def _make_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--configuration",
-        choices=[config.name for config in LowLevelConfiguration],
+        choices=_configuration_choices(),
         help="Override the actuator ordering instead of using the configuration value from the DDS sample.",
     )
     parser.add_argument(
@@ -172,6 +186,7 @@ def main() -> None:
     active_mapping: list[tuple[int, int]] = []
     active_mapping_key: tuple[LowLevelConfiguration, int] | None = None
     warned_about_timeout = False
+    warned_about_none_configuration = False
 
     print(
         f"Listening for low-level state on ROS topic {args.topic!r} in DDS domain {args.domain_id} "
@@ -206,6 +221,18 @@ def main() -> None:
                     config_value=getattr(state, "configuration", None),
                     override=args.configuration,
                 )
+                if configuration is None:
+                    if not warned_about_none_configuration:
+                        print(
+                            f"Received low-state sample with configuration=NONE on topic {args.topic!r}; "
+                            "waiting for the robot bridge to publish an active layout."
+                        )
+                        warned_about_none_configuration = True
+                    viewer.sync()
+                    rate.sleep()
+                    continue
+
+                warned_about_none_configuration = False
                 actuator_count = len(state.actuator_states)
                 mapping_key = (configuration, actuator_count)
 
@@ -225,7 +252,7 @@ def main() -> None:
                         print("Ignoring joints not present in the selected MuJoCo model:", ", ".join(ignored_joints))
 
                 for actuator_index, qpos_index in active_mapping:
-                    data.qpos[qpos_index] = args.joint_scale * state.actuator_states[actuator_index].position
+                    data.qpos[qpos_index] = state.actuator_states[actuator_index].position
 
                 dt = max(rate.period, 1e-6)
                 data.qvel[:] = (data.qpos - previous_joint_positions) / dt

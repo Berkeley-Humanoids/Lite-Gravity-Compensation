@@ -261,7 +261,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/34/b8/aa7d6cf2d5efdd2fc
 [[package]]
 name = "lite-sdk2"
 version = "0.1.0"
-source = { git = "https://github.com/T-K-233/Lite-SDK2-Python.git#9208340de0cb7ace5e05641a1f2c82ccfc8f57f2" }
+source = { git = "https://github.com/T-K-233/Lite-SDK2-Python.git#40112224745d967c7da41fe2cb2795f94f3438c6" }
 dependencies = [
     { name = "cyclonedds" },
     { name = "loop-rate-limiters" },
