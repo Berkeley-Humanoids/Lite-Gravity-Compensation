@@ -212,7 +212,7 @@ def _make_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", choices=sorted(MODEL_ASSETS), default=DEFAULT_MODEL)
     parser.add_argument("--command-hz", type=float, default=200.0)
     parser.add_argument("--status-hz", type=float, default=2.0)
-    parser.add_argument("--damping", type=float, default=0.2, help="Viscous joint damping added on top of gravity compensation.")
+    parser.add_argument("--damping", type=float, default=0.5, help="Viscous joint damping added on top of gravity compensation.")
     parser.add_argument("--kp", type=float, default=0.0, help="Optional position gain around the startup pose.")
     parser.add_argument("--kd", type=float, default=0.0, help="Optional velocity gain around the startup pose.")
     parser.add_argument(

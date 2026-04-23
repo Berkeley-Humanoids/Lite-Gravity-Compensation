@@ -8,7 +8,7 @@ from loop_rate_limiters import RateLimiter
 from robot_descriptions import load_asset
 
 
-robot_xml = load_asset("robots/lite_dummy/mjcf/scene.xml")
+robot_xml = load_asset("robots/lite_dummy/mjcf/lite.xml")
 
 _COMPLIANT_DAMPING = 0.2
 
