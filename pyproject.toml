@@ -15,8 +15,8 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-lite-sdk2 = { git = "https://github.com/T-K-233/Lite-SDK2.git", subdirectory = "python" }
 robot-descriptions = { git = "https://github.com/Berkeley-Humanoids/Robot-Descriptions.git" }
+lite-sdk2 = { git = "https://github.com/Berkeley-Humanoids/Lite-SDK2.git", subdirectory = "python" }
 
 [tool.ruff]
 line-length = 120
