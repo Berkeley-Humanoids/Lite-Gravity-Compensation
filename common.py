@@ -3,15 +3,13 @@ from dataclasses import dataclass
 
 import mujoco
 import numpy as np
-from lite_sdk2.dds.actuator_command import make_zero_actuator_commands
-from lite_sdk2.dds.configuration import LowLevelConfiguration
-from lite_sdk2.dds.low_command import LowCommand
+from lite_sdk2 import Configuration, LowCommand, zero_actuator_commands
+from lite_sdk2.topics import LOWCOMMAND, LOWSTATE
 from robot_descriptions import load_asset
 
-try:
-    from lite_sdk2.dds.low_command import DEFAULT_LOWCOMMAND_TOPIC
-except ImportError:
-    DEFAULT_LOWCOMMAND_TOPIC = "/lowcommand"
+
+LOWCOMMAND_TOPIC = LOWCOMMAND
+LOWSTATE_TOPIC = LOWSTATE
 
 
 _MODEL_ASSETS = {
@@ -26,7 +24,7 @@ DISABLED_CONTROL_MODE = 0
 COMMAND_HZ = 200.0
 STATUS_HZ = 2.0
 READ_TIMEOUT = 0.1
-WRITE_TIMEOUT = 0.05
+STARTUP_MATCH_TIMEOUT = 2.0
 ZERO_COMMAND_COUNT = 10
 
 EXIT_DAMPING_KP = 0.0
@@ -49,8 +47,6 @@ VISUALIZER_READ_TIMEOUT = 1.0
 MUJOCO_DEMO_DAMPING = 0.5
 MUJOCO_DEMO_HZ = 200.0
 
-NONE_CONFIGURATION = getattr(LowLevelConfiguration, "NONE", None)
-
 _ARM_JOINT_TOKENS = ("shoulder", "elbow", "wrist")
 _LEG_JOINT_TOKENS = ("hip", "knee", "ankle")
 
@@ -71,30 +67,30 @@ def load_model_asset(model_name: str = DEFAULT_MODEL) -> str:
 
 
 def _joint_order_for_configuration(
-    configuration: LowLevelConfiguration,
+    configuration: Configuration,
     model_joint_names: list[str],
 ) -> list[str]:
-    if NONE_CONFIGURATION is not None and configuration is NONE_CONFIGURATION:
+    if configuration is Configuration.NONE:
         return []
-    if configuration is LowLevelConfiguration.FULL_BODY_WITH_FINGERS:
+    if configuration is Configuration.FULL_BODY_WITH_FINGERS:
         return list(model_joint_names)
-    if configuration is LowLevelConfiguration.FULL_BODY:
+    if configuration is Configuration.FULL_BODY:
         return [name for name in model_joint_names if "finger" not in name]
-    if configuration is LowLevelConfiguration.ARMS_AND_LEGS:
+    if configuration is Configuration.ARMS_AND_LEGS:
         return [
             name
             for name in model_joint_names
             if any(token in name for token in _ARM_JOINT_TOKENS + _LEG_JOINT_TOKENS)
         ]
-    if configuration is LowLevelConfiguration.BIMANUAL_ARMS:
+    if configuration is Configuration.BIMANUAL_ARMS:
         return [name for name in model_joint_names if any(token in name for token in _ARM_JOINT_TOKENS)]
-    if configuration is LowLevelConfiguration.LEFT_ARM:
+    if configuration is Configuration.LEFT_ARM:
         return [
             name
             for name in model_joint_names
             if name.startswith("left_") and any(token in name for token in _ARM_JOINT_TOKENS)
         ]
-    if configuration is LowLevelConfiguration.RIGHT_ARM:
+    if configuration is Configuration.RIGHT_ARM:
         return [
             name
             for name in model_joint_names
@@ -103,16 +99,15 @@ def _joint_order_for_configuration(
     raise ValueError(f"Unsupported low-level configuration: {configuration!r}")
 
 
-def resolve_configuration(config_value: int | None) -> LowLevelConfiguration | None:
+def resolve_configuration(config_value: int | None) -> Configuration | None:
     if config_value is None:
         raise ValueError(
             "The incoming low-state sample did not include a configuration value. "
             "The robot bridge must publish an active actuator layout."
         )
 
-    configuration = LowLevelConfiguration(config_value)
-
-    if NONE_CONFIGURATION is not None and configuration is NONE_CONFIGURATION:
+    configuration = Configuration(config_value)
+    if configuration is Configuration.NONE:
         return None
     return configuration
 
@@ -140,7 +135,7 @@ def build_joint_info(model: mujoco.MjModel) -> tuple[dict[str, JointInfo], list[
 
 
 def build_mapping(
-    configuration: LowLevelConfiguration,
+    configuration: Configuration,
     actuator_count: int,
     model_joint_names: list[str],
     joint_info_by_name: dict[str, JointInfo],
@@ -192,7 +187,7 @@ def apply_viscous_damping(
 
 
 def build_command(
-    configuration: LowLevelConfiguration,
+    configuration: Configuration,
     actuator_count: int,
     mode: int,
     *,
@@ -201,15 +196,10 @@ def build_command(
 ) -> LowCommand:
     return LowCommand(
         configuration=configuration,
-        actuator_commands=make_zero_actuator_commands(actuator_count, mode=mode, kp=kp, kd=kd),
+        actuator_commands=zero_actuator_commands(actuator_count, mode=mode, kp=kp, kd=kd),
     )
 
 
-def publish_command_burst(
-    publisher: object,
-    command: LowCommand,
-    repeat_count: int,
-    timeout: float,
-) -> None:
+def publish_command_burst(publisher: object, command: LowCommand, repeat_count: int) -> None:
     for _ in range(max(repeat_count, 1)):
-        publisher.write(command, timeout=timeout)
+        publisher.write(command)

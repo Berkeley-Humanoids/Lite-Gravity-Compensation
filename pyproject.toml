@@ -14,5 +14,5 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-lite-sdk2 = { git = "https://github.com/T-K-233/Lite-SDK2-Python.git" }
+lite-sdk2 = { git = "https://github.com/T-K-233/Lite-SDK2-Python.git", subdirectory = "python" }
 robot-descriptions = { git = "https://github.com/Berkeley-Humanoids/Robot-Descriptions.git" }

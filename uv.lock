@@ -275,8 +275,8 @@ sdist = { url = "https://files.pythonhosted.org/packages/34/b8/aa7d6cf2d5efdd2fc
 
 [[package]]
 name = "lite-sdk2"
-version = "0.2.1"
-source = { git = "https://github.com/T-K-233/Lite-SDK2-Python.git#b13ee62a5ab9f4a9194dbc44d3d2ee8ea015f2ca" }
+version = "0.3.0"
+source = { git = "https://github.com/T-K-233/Lite-SDK2-Python.git?subdirectory=python#9c1049b9a8d0d9e07709e14b871f9f6a2f4f2a84" }
 dependencies = [
     { name = "cyclonedds" },
     { name = "loop-rate-limiters" },
@@ -712,7 +712,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "lite-sdk2", git = "https://github.com/T-K-233/Lite-SDK2-Python.git" },
+    { name = "lite-sdk2", git = "https://github.com/T-K-233/Lite-SDK2-Python.git?subdirectory=python" },
     { name = "loop-rate-limiters", specifier = ">=1.2.0" },
     { name = "mink", specifier = ">=1.1.0" },
     { name = "mujoco", specifier = ">=3.6.0" },

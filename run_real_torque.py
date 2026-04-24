@@ -1,27 +1,26 @@
 import time
 
+import lite_sdk2
 import mujoco
 import numpy as np
-from lite_sdk2 import LowCommandPublisher, LowStateSubscriber, initialize_channel_factory
-from lite_sdk2.dds.configuration import LowLevelConfiguration
-from lite_sdk2.dds.low_command import LowCommand
-from lite_sdk2.dds.low_state import DEFAULT_LOWSTATE_TOPIC
+from lite_sdk2 import Configuration, LowCommand, LowState
 from loop_rate_limiters import RateLimiter
 
 from common import (
     COMMAND_HZ,
     DEFAULT_CONTROL_MODE,
-    DEFAULT_LOWCOMMAND_TOPIC,
     DISABLED_CONTROL_MODE,
     DOMAIN_ID,
     EXIT_DAMPING_KD,
     EXIT_DAMPING_KP,
     JointInfo,
+    LOWCOMMAND_TOPIC,
+    LOWSTATE_TOPIC,
     READ_TIMEOUT,
+    STARTUP_MATCH_TIMEOUT,
     STATUS_HZ,
     TORQUE_DAMPING,
     TORQUE_MAX_TORQUE,
-    WRITE_TIMEOUT,
     ZERO_COMMAND_COUNT,
     apply_viscous_damping,
     build_command,
@@ -36,7 +35,7 @@ from common import (
 
 
 def _print_status(
-    configuration: LowLevelConfiguration,
+    configuration: Configuration,
     mapped_count: int,
     torques: np.ndarray,
 ) -> None:
@@ -64,28 +63,33 @@ def main() -> None:
     if not subtree_ids:
         raise RuntimeError("Could not find any world-rooted body subtrees for gravity compensation.")
 
-    initialize_channel_factory(DOMAIN_ID)
-    subscriber = LowStateSubscriber(topic=DEFAULT_LOWSTATE_TOPIC, domain_id=DOMAIN_ID)
-    publisher = LowCommandPublisher(topic=DEFAULT_LOWCOMMAND_TOPIC, domain_id=DOMAIN_ID)
+    lite_sdk2.initialize(DOMAIN_ID)
+    subscriber = lite_sdk2.subscriber(LowState, topic=LOWSTATE_TOPIC, domain_id=DOMAIN_ID)
+    publisher = lite_sdk2.publisher(LowCommand, topic=LOWCOMMAND_TOPIC, domain_id=DOMAIN_ID)
     subscriber.initialize()
     publisher.initialize()
+
+    if not publisher.wait_for_reader(STARTUP_MATCH_TIMEOUT):
+        print(
+            f"No LowCommand reader matched within {STARTUP_MATCH_TIMEOUT:.2f}s on {LOWCOMMAND_TOPIC!r}; "
+            "publishing anyway."
+        )
 
     status_period = 1.0 / STATUS_HZ
     next_status_time = 0.0
     active_mapping: list[tuple[int, JointInfo]] = []
-    active_mapping_key: tuple[LowLevelConfiguration, int] | None = None
+    active_mapping_key: tuple[Configuration, int] | None = None
     active_dof_ids = np.array([], dtype=int)
-    active_configuration: LowLevelConfiguration | None = None
+    active_configuration: Configuration | None = None
     actuator_count = 0
     warned_about_timeout = False
-    warned_about_write_failure = False
     warned_about_decode_failure = False
     warned_about_none_configuration = False
     shutdown_command: LowCommand | None = None
 
     print(
-        f"Listening for low-level state on ROS topic {DEFAULT_LOWSTATE_TOPIC!r} and publishing gravity-compensated "
-        f"commands to {DEFAULT_LOWCOMMAND_TOPIC!r} in DDS domain {DOMAIN_ID} with MuJoCo model {model_path!r}."
+        f"Listening for low-level state on ROS topic {LOWSTATE_TOPIC!r} and publishing gravity-compensated "
+        f"commands to {LOWCOMMAND_TOPIC!r} in DDS domain {DOMAIN_ID} with MuJoCo model {model_path!r}."
     )
 
     try:
@@ -95,7 +99,7 @@ def main() -> None:
                 state = subscriber.read(timeout=READ_TIMEOUT)
             except ValueError as exc:
                 if not warned_about_decode_failure:
-                    print(f"Ignoring malformed low-state sample on topic {DEFAULT_LOWSTATE_TOPIC!r}: {exc}")
+                    print(f"Ignoring malformed low-state sample on topic {LOWSTATE_TOPIC!r}: {exc}")
                     warned_about_decode_failure = True
                 rate.sleep()
                 continue
@@ -105,7 +109,7 @@ def main() -> None:
                 if not warned_about_timeout:
                     print(
                         f"No low-state sample received before the {READ_TIMEOUT:.3f}s timeout on topic "
-                        f"{DEFAULT_LOWSTATE_TOPIC!r}; publishing zero torque while waiting."
+                        f"{LOWSTATE_TOPIC!r}; publishing zero torque while waiting."
                     )
                     warned_about_timeout = True
 
@@ -114,7 +118,6 @@ def main() -> None:
                         publisher,
                         build_command(active_configuration, actuator_count, DEFAULT_CONTROL_MODE),
                         ZERO_COMMAND_COUNT,
-                        WRITE_TIMEOUT,
                     )
 
                 rate.sleep()
@@ -125,7 +128,7 @@ def main() -> None:
             if configuration is None:
                 if not warned_about_none_configuration:
                     print(
-                        f"Received low-state sample with configuration=NONE on topic {DEFAULT_LOWSTATE_TOPIC!r}; "
+                        f"Received low-state sample with configuration=NONE on topic {LOWSTATE_TOPIC!r}; "
                         "waiting for the robot bridge to publish an active layout."
                     )
                     warned_about_none_configuration = True
@@ -178,15 +181,7 @@ def main() -> None:
                 actuator_command.torque = torque
                 commanded_torques[mapped_index] = torque
 
-            if not publisher.write(command, timeout=WRITE_TIMEOUT):
-                if not warned_about_write_failure:
-                    print(
-                        f"Failed to publish LowCommand to topic {DEFAULT_LOWCOMMAND_TOPIC!r} within "
-                        f"{WRITE_TIMEOUT:.3f}s; continuing."
-                    )
-                    warned_about_write_failure = True
-            else:
-                warned_about_write_failure = False
+            publisher.write(command)
 
             now = time.monotonic()
             if status_period and now >= next_status_time and active_configuration is not None:
@@ -215,24 +210,16 @@ def main() -> None:
             try:
                 damping_rate = RateLimiter(frequency=COMMAND_HZ, warn=False)
                 while True:
-                    if not publisher.write(damping_command, timeout=WRITE_TIMEOUT):
-                        if not warned_about_write_failure:
-                            print(
-                                f"Failed to publish LowCommand to topic {DEFAULT_LOWCOMMAND_TOPIC!r} within "
-                                f"{WRITE_TIMEOUT:.3f}s while in damping mode; continuing."
-                            )
-                            warned_about_write_failure = True
-                    else:
-                        warned_about_write_failure = False
+                    publisher.write(damping_command)
                     damping_rate.sleep()
             except KeyboardInterrupt:
                 print("Second keyboard interrupt received. Disabling actuators and exiting.")
     finally:
         if shutdown_command is not None:
-            publish_command_burst(publisher, shutdown_command, ZERO_COMMAND_COUNT, WRITE_TIMEOUT)
+            publish_command_burst(publisher, shutdown_command, ZERO_COMMAND_COUNT)
         elif active_configuration is not None and actuator_count > 0:
             zero_command = build_command(active_configuration, actuator_count, DEFAULT_CONTROL_MODE)
-            publish_command_burst(publisher, zero_command, ZERO_COMMAND_COUNT, WRITE_TIMEOUT)
+            publish_command_burst(publisher, zero_command, ZERO_COMMAND_COUNT)
         publisher.close()
         subscriber.close()
 
