@@ -1,8 +1,9 @@
 [project]
-name = "test-gravity-comp"
-version = "0.1.0"
-description = "Add your description here"
+name = "lite-gravity-compensation"
+version = "0.2.0"
+description = "Gravity-compensation demos for the Berkeley Humanoid Lite robot."
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
     "lite-sdk2",
@@ -14,5 +15,8 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-lite-sdk2 = { git = "https://github.com/T-K-233/Lite-SDK2-Python.git", subdirectory = "python" }
+lite-sdk2 = { git = "https://github.com/T-K-233/Lite-SDK2.git", subdirectory = "python" }
 robot-descriptions = { git = "https://github.com/Berkeley-Humanoids/Robot-Descriptions.git" }
+
+[tool.ruff]
+line-length = 120
