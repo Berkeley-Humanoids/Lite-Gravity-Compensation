@@ -22,7 +22,9 @@ from common import (
     TORQUE_DAMPING,
     TORQUE_MAX_TORQUE,
     ZERO_COMMAND_COUNT,
+    apply_collision_repulsion,
     apply_viscous_damping,
+    build_collision_pairs,
     build_command,
     build_joint_info,
     build_mapping,
@@ -62,6 +64,7 @@ def main() -> None:
     subtree_ids = world_child_subtree_ids(model)
     if not subtree_ids:
         raise RuntimeError("Could not find any world-rooted body subtrees for gravity compensation.")
+    collision_pairs = build_collision_pairs(model)
 
     lite_sdk2.initialize(DOMAIN_ID)
     subscriber = lite_sdk2.subscriber(LowState, topic=LOWSTATE_TOPIC, domain_id=DOMAIN_ID)
@@ -166,6 +169,7 @@ def main() -> None:
 
             mujoco.mj_forward(model, data)
             compensate_gravity(model, data, subtree_ids)
+            apply_collision_repulsion(model, data, collision_pairs)
             if active_dof_ids.size:
                 apply_viscous_damping(data, active_dof_ids, TORQUE_DAMPING)
 
