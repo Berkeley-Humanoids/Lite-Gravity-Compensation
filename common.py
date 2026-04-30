@@ -54,7 +54,33 @@ COLLISION_MAX_FORCE = 30.0      # cap on the per-pair repulsive force in N
 
 _ARM_JOINT_TOKENS = ("shoulder", "elbow", "wrist")
 _LEG_JOINT_TOKENS = ("hip", "knee", "ankle")
-_TORSO_BODY_NAMES = frozenset({"chest", "neck_yaw", "neck_roll", "head"})
+
+# Geom-name groups used to build the default collision-pair spec for the lite_dummy
+# model, in the same shape mink.CollisionAvoidanceLimit consumes (a list of (group_a,
+# group_b) tuples, where each group is a list of geom names).
+LITE_LEFT_ARM_COLLISION_GEOMS: tuple[str, ...] = (
+    "left_shoulder_yaw_collision",
+    "left_wrist_yaw_collision",
+    "left_hand_finger_collision",
+    "left_hand_palm_collision",
+)
+LITE_RIGHT_ARM_COLLISION_GEOMS: tuple[str, ...] = (
+    "right_shoulder_yaw_collision",
+    "right_wrist_yaw_collision",
+    "right_hand_finger_collision",
+    "right_hand_palm_collision",
+)
+LITE_TORSO_COLLISION_GEOMS: tuple[str, ...] = (
+    "chest_collision",
+    "chest_collar_left_collision",
+    "chest_collar_right_collision",
+    "head_collision",
+)
+DEFAULT_COLLISION_GEOM_PAIRS: tuple[tuple[Sequence[str], Sequence[str]], ...] = (
+    (LITE_LEFT_ARM_COLLISION_GEOMS, LITE_RIGHT_ARM_COLLISION_GEOMS),
+    (LITE_LEFT_ARM_COLLISION_GEOMS, LITE_TORSO_COLLISION_GEOMS),
+    (LITE_RIGHT_ARM_COLLISION_GEOMS, LITE_TORSO_COLLISION_GEOMS),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,58 +256,44 @@ def publish_command_burst(publisher: object, command: LowCommand, repeat_count: 
         publisher.write(command)
 
 
-def _collision_group_for_body(body_name: str) -> str | None:
-    """Bucket each body into one of three groups; pairs are only built across groups.
+def _resolve_geom_id(model: mujoco.MjModel, geom_name: str) -> int:
+    geom_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, geom_name)
+    if geom_id < 0:
+        raise ValueError(f"Geom {geom_name!r} not found in the MuJoCo model.")
+    return geom_id
 
-    Bodies in the same group (e.g. two links of the same arm) are skipped because
-    they are kinematically adjacent and would generate spurious "near contacts".
+
+def build_collision_pairs(
+    model: mujoco.MjModel,
+    geom_pairs: Sequence[tuple[Sequence[str], Sequence[str]]] = DEFAULT_COLLISION_GEOM_PAIRS,
+) -> list[CollisionPair]:
+    """Resolve a mink-style geom-pair spec into a flat list of CollisionPair entries.
+
+    `geom_pairs` follows the same shape as `mink.CollisionAvoidanceLimit.geom_pairs`:
+    each entry is a tuple (group_a, group_b) where each group is a list of geom
+    names. The Cartesian product across the two groups becomes the watched pairs.
+    Pairs on the same body, or pairs that resolve to the same geom, are skipped.
+    Duplicates across entries are deduplicated. Run this once at startup; the
+    returned list is cheap to iterate every tick.
     """
-    if body_name.startswith("left_"):
-        return "left_arm"
-    if body_name.startswith("right_"):
-        return "right_arm"
-    if body_name in _TORSO_BODY_NAMES:
-        return "torso"
-    return None
-
-
-def build_collision_pairs(model: mujoco.MjModel) -> list[CollisionPair]:
-    """Enumerate every (geom1, geom2) pair we want to watch for self-collision.
-
-    Iterates over collidable geoms (those with non-zero contype/conaffinity),
-    groups them by body, then takes the cross-product of geoms across different
-    body groups (left arm vs right arm, left arm vs torso, right arm vs torso).
-    Run this once at startup; the returned list is cheap to iterate every tick.
-    """
-    bodies_per_group: dict[str, list[int]] = {}
-    for body_id in range(model.nbody):
-        group = _collision_group_for_body(model.body(body_id).name)
-        if group is None:
-            continue
-        bodies_per_group.setdefault(group, []).append(body_id)
-
-    geoms_per_body: dict[int, list[int]] = {}
-    for geom_id in range(model.ngeom):
-        if model.geom_contype[geom_id] == 0 or model.geom_conaffinity[geom_id] == 0:
-            continue
-        body_id = int(model.geom_bodyid[geom_id])
-        geoms_per_body.setdefault(body_id, []).append(geom_id)
-
+    seen: set[tuple[int, int]] = set()
     pairs: list[CollisionPair] = []
-    group_names = sorted(bodies_per_group)
-    for i, group_a in enumerate(group_names):
-        for group_b in group_names[i + 1 :]:
-            for body_a in bodies_per_group[group_a]:
-                geoms_a = geoms_per_body.get(body_a, [])
-                if not geoms_a:
+    for group_a, group_b in geom_pairs:
+        ids_a = [_resolve_geom_id(model, name) for name in group_a]
+        ids_b = [_resolve_geom_id(model, name) for name in group_b]
+        for geom_a in ids_a:
+            body_a = int(model.geom_bodyid[geom_a])
+            for geom_b in ids_b:
+                if geom_a == geom_b:
                     continue
-                for body_b in bodies_per_group[group_b]:
-                    geoms_b = geoms_per_body.get(body_b, [])
-                    if not geoms_b:
-                        continue
-                    for geom_a in geoms_a:
-                        for geom_b in geoms_b:
-                            pairs.append(CollisionPair(geom_a, geom_b, body_a, body_b))
+                body_b = int(model.geom_bodyid[geom_b])
+                if body_a == body_b:
+                    continue
+                key = (geom_a, geom_b) if geom_a < geom_b else (geom_b, geom_a)
+                if key in seen:
+                    continue
+                seen.add(key)
+                pairs.append(CollisionPair(geom_a, geom_b, body_a, body_b))
     return pairs
 
 
