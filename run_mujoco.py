@@ -1,13 +1,21 @@
+"""Pure-MuJoCo gravity-compensation demo — no DDS, no robot."""
+
 import mujoco
 import mujoco.viewer
 import numpy as np
 from loop_rate_limiters import RateLimiter
 
-from common import MUJOCO_DEMO_DAMPING, MUJOCO_DEMO_HZ, apply_viscous_damping, compensate_gravity, load_model_asset
+from gravity import (
+    MUJOCO_DEMO_DAMPING,
+    MUJOCO_DEMO_HZ,
+    apply_viscous_damping,
+    compensate_gravity,
+    load_model_path,
+)
 
 
-if __name__ == "__main__":
-    model = mujoco.MjModel.from_xml_path(load_model_asset())
+def main() -> None:
+    model = mujoco.MjModel.from_xml_path(load_model_path())
     data = mujoco.MjData(model)
 
     subtree_ids = [model.body("chest").id]
@@ -34,6 +42,9 @@ if __name__ == "__main__":
             compensate_gravity(model, data, subtree_ids)
             apply_viscous_damping(data, upper_body_dof_ids, MUJOCO_DEMO_DAMPING)
             mujoco.mj_step(model, data)
-
             viewer.sync()
             rate.sleep()
+
+
+if __name__ == "__main__":
+    main()

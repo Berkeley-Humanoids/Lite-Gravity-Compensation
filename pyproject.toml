@@ -1,22 +1,23 @@
 [project]
 name = "lite-gravity-compensation"
-version = "0.2.0"
-description = "Gravity-compensation demos for the Berkeley Humanoid Lite robot."
+version = "0.5.0"
+description = "Gravity-compensation runner for the Berkeley Humanoid Lite. Talks to bar_ros2's RemotePolicyController over raw CycloneDDS — no rclpy."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
-    "lite-sdk2",
+    "cyclonedds>=0.10",
     "loop-rate-limiters>=1.2.0",
-    "mink>=1.1.0",
     "mujoco>=3.6.0",
-    "numpy>=2.4.4",
-    "robot-descriptions",
+    "numpy>=2.0",
+    "robot_descriptions @ git+https://github.com/Berkeley-Humanoids/Robot-Descriptions.git",
 ]
 
-[tool.uv.sources]
-robot-descriptions = { git = "https://github.com/Berkeley-Humanoids/Robot-Descriptions.git" }
-lite-sdk2 = { git = "https://github.com/Berkeley-Humanoids/Lite-SDK2.git", subdirectory = "python" }
+[project.optional-dependencies]
+dev = ["ruff>=0.5"]
 
 [tool.ruff]
 line-length = 120
+
+[tool.ruff.lint]
+select = ["I", "F", "UP", "B", "SIM"]
