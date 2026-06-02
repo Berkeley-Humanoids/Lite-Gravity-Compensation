@@ -14,8 +14,9 @@ import mujoco
 import numpy as np
 from loop_rate_limiters import RateLimiter
 
-from bar_dds import DdsContext, Header, JointState, MITCommand, reliable_keep_last
-from bar_dds import Time as DdsTime
+import lite_sdk2
+from lite_sdk2 import Header, JointState, MITCommand
+from lite_sdk2 import Time as DdsTime
 from gravity import (
     COMMAND_HZ,
     LITE_ARM_JOINTS,
@@ -80,9 +81,13 @@ class GravityRunner:
         self.latest_velocity = np.zeros(len(self.joint_names))
         self.joint_state_seen = False
 
-        self.dds = DdsContext(domain_id=domain_id)
-        self.reader = self.dds.reader(JOINT_STATE_TOPIC, JointState, reliable_keep_last(10))
-        self.writer = self.dds.writer(COMMAND_TOPIC, MITCommand, reliable_keep_last(4))
+        # Topic + QoS come from the lite_sdk2 registry (JointState: reliable
+        # keep-last 10; MITCommand: reliable keep-last 4) — matching the bringup.
+        lite_sdk2.initialize(domain_id=domain_id)
+        self.sub = lite_sdk2.subscriber(JointState)
+        self.sub.initialize()
+        self.pub = lite_sdk2.publisher(MITCommand)
+        self.pub.initialize()
 
         self.last_status_t = 0.0
         self.status_period = 1.0 / STATUS_HZ
@@ -93,7 +98,7 @@ class GravityRunner:
         )
 
     def drain_joint_state(self) -> None:
-        for sample in self.reader.take(N=64):
+        for sample in self.sub.read_batch(max_samples=64):
             for i, name in enumerate(sample.name):
                 idx = self.joint_index.get(name)
                 if idx is None:
@@ -123,7 +128,7 @@ class GravityRunner:
         if not self.joint_state_seen:
             return
         self.refresh_mujoco_state()
-        self.writer.write(self.build_command())
+        self.pub.write(self.build_command())
         self.maybe_status()
 
     def maybe_status(self) -> None:
@@ -144,7 +149,7 @@ class GravityRunner:
                 "\nKeyboardInterrupt — publishing passive shutdown command. "
                 "Drive the FSM to DAMPING (gamepad X) for a real stop."
             )
-            self.writer.write(self.passive_command())
+            self.pub.write(self.passive_command())
 
     def passive_command(self) -> MITCommand:
         """Universal safe shutdown: zero stiffness, small damping, coast.

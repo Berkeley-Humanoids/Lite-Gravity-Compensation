@@ -33,7 +33,7 @@ Both ROS 2 runners publish in `LITE_ARM_JOINTS` order
 
 | File | Role |
 |---|---|
-| `bar_dds.py` | IdlStruct mirrors of `Time`/`Header`/`MITCommand`/`JointState`, ROS↔DDS topic+type mangling, `DdsContext` |
+| _(message types + DDS)_ | provided by the **`lite_sdk2`** dependency — generated `bar_msgs` types from `bar_msgs_dds` plus the publisher/subscriber channel layer. No local mirror (the former `bar_dds.py` is gone). |
 | `gravity.py` | MuJoCo helpers, joint list, tuning constants |
 | `runner.py` | Shared `GravityRunner` base — drain → MuJoCo → publish loop |
 | `run_ros2_torque.py` | Torque-mode subclass + main |
@@ -50,21 +50,23 @@ the wire endpoints to meet:
   `pkg::msg::dds_::Name_`.
 - **QoS.** RELIABLE + KEEP_LAST + VOLATILE on both sides.
 
-`bar_dds.py` encodes all three. CycloneDDS-python on this side
-interoperates with either `rmw_cyclonedds_cpp` or `rmw_fastrtps_cpp` on
-the bringup — both speak RTPS-over-UDP with CDR. No
-`RMW_IMPLEMENTATION` env override needed.
+`lite_sdk2` encodes all three (the topic/type mangling and QoS live in
+`bar_msgs_dds`; the types are generated from `bar_msgs/msg/*.msg`).
+CycloneDDS-python on this side interoperates with either
+`rmw_cyclonedds_cpp` or `rmw_fastrtps_cpp` on the bringup — both speak
+RTPS-over-UDP with CDR. No `RMW_IMPLEMENTATION` env override needed.
 
 ## Setup
 
 ```bash
-python3 -m venv .venv
+uv sync                      # resolves lite_sdk2 + bar_msgs_dds
 source .venv/bin/activate
-pip install -e .
 ```
 
-(Or `uv sync && source .venv/bin/activate` if you prefer — the env is
-plain pip.)
+`uv sync` uses the in-tree `lite_sdk2` and `bar_msgs_dds` checkouts via
+`[tool.uv.sources]` in `pyproject.toml`; for a standalone install they
+resolve from their git URLs instead. (Plain `pip install -e .` also
+works but won't pick up the local sibling checkouts.)
 
 ## Run
 

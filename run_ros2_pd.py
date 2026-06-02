@@ -12,7 +12,7 @@ import time
 
 import numpy as np
 
-from bar_dds import MITCommand
+from lite_sdk2 import MITCommand
 from gravity import PD_MAX_POSITION_OFFSET, PD_MAX_TORQUE, PD_POSITION_KP, PD_VELOCITY_KD
 from runner import GravityRunner, make_command
 

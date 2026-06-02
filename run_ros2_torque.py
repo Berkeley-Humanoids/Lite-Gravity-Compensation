@@ -11,7 +11,7 @@ import time
 
 import numpy as np
 
-from bar_dds import MITCommand
+from lite_sdk2 import MITCommand
 from gravity import TORQUE_DAMPING, TORQUE_MAX_TORQUE, apply_viscous_damping
 from runner import GravityRunner, make_command
 
