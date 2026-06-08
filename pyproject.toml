@@ -1,7 +1,7 @@
 [project]
 name = "lite-gravity-compensation"
 version = "0.5.0"
-description = "Gravity-compensation runner for the Berkeley Humanoid Lite. Talks to bar_ros2's RemotePolicyController over raw CycloneDDS — no rclpy."
+description = "Gravity-compensation demo for the Berkeley Lite robot."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"

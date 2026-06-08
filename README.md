@@ -1,6 +1,6 @@
 # Lite-Gravity-Compensation
 
-Gravity-compensation runner for the Berkeley Humanoid Lite. Talks to
+Gravity-compensation controller for the Berkeley Humanoid Lite. Talks to
 [`bar_ros2`](https://github.com/Berkeley-Humanoids/bar_ros2)'s
 `RemotePolicyController` over **raw CycloneDDS** — no `rclpy`, no
 colcon sourcing, no `--system-site-packages`.
@@ -25,7 +25,7 @@ MuJoCo here is a dynamics model only — no stepping.
 | `run_ros2_pd.py` | `position = q + gravity/Kp` (clipped), `K=PD_POSITION_KP`, `D=PD_VELOCITY_KD` |
 | `run_mujoco.py` | Pure MuJoCo viewer demo, no DDS |
 
-Both ROS 2 runners publish in `LITE_ARM_JOINTS` order
+Both ROS 2 controllers publish in `LITE_ARM_JOINTS` order
 (`bar_bringup_lite/config/lite_hardware.yaml` `arm_joints`).
 `RemotePolicyController` rejects joint-order mismatches.
 
@@ -34,11 +34,13 @@ Both ROS 2 runners publish in `LITE_ARM_JOINTS` order
 | File | Role |
 |---|---|
 | _(message types + DDS)_ | provided by the **`lite_sdk2`** dependency — generated `bar_msgs` types from `bar_msgs_dds` plus the publisher/subscriber channel layer. No local mirror (the former `bar_dds.py` is gone). |
-| `gravity.py` | MuJoCo helpers, joint list, tuning constants |
-| `runner.py` | Shared `GravityRunner` base — drain → MuJoCo → publish loop |
-| `run_ros2_torque.py` | Torque-mode subclass + main |
-| `run_ros2_pd.py` | PD-mode subclass + main |
+| `gravity.py` | MuJoCo model + gravity math, joint list, tuning constants (no DDS) |
+| `run_ros2_torque.py` | Torque-mode controller — self-contained drain → MuJoCo → publish loop |
+| `run_ros2_pd.py` | PD-mode controller — self-contained drain → MuJoCo → publish loop |
 | `run_mujoco.py` | Standalone MuJoCo demo |
+
+Each `run_*.py` example is self-contained and reads top to bottom; `gravity.py`
+holds the shared, DDS-free model + math the examples (and the viewer demo) import.
 
 ## How this bypasses rclpy
 
@@ -58,15 +60,21 @@ RTPS-over-UDP with CDR. No `RMW_IMPLEMENTATION` env override needed.
 
 ## Setup
 
+> This is a runnable project, not a library: the scripts below are launched
+> directly (`uv run python run_ros2_torque.py`), and it is **not** meant to be
+> `pip install`ed — there is no packaged entry point. `uv sync` only resolves
+> the runtime dependencies into the local `.venv`.
+
 ```bash
 uv sync                      # resolves lite_sdk2 + bar_msgs_dds
 source .venv/bin/activate
 ```
 
-`uv sync` uses the in-tree `lite_sdk2` and `bar_msgs_dds` checkouts via
-`[tool.uv.sources]` in `pyproject.toml`; for a standalone install they
-resolve from their git URLs instead. (Plain `pip install -e .` also
-works but won't pick up the local sibling checkouts.)
+`uv sync` resolves `lite_sdk2` and (transitively) `bar_msgs_dds` from
+their git URLs — both are upstreamed, so no local checkouts or
+`[tool.uv.sources]` overrides are needed. For cross-repo local
+development, add a `[tool.uv.sources]` path override here pointing at an
+in-tree sibling checkout.
 
 ## Run
 
@@ -75,7 +83,7 @@ works but won't pick up the local sibling checkouts.)
 ros2 launch bar_bringup_lite real.launch.py     # or mujoco.launch.py
 
 # Drive the FSM into REMOTE. Either via gamepad (X → L1+A →
-# wait for standby → R1+A) or by hand:
+# wait for standby → R1+B) or by hand:
 ros2 control switch_controllers --deactivate zero_torque_controller \
     --activate damping_controller
 ros2 control switch_controllers --deactivate damping_controller \
@@ -84,7 +92,7 @@ ros2 control switch_controllers --deactivate damping_controller \
 ros2 control switch_controllers --deactivate standby_controller \
     --activate remote_policy_controller
 
-# Terminal B — runner (in this venv):
+# Terminal B — controller (in this venv):
 python run_ros2_torque.py   # or run_ros2_pd.py
 ```
 
@@ -95,7 +103,7 @@ you've moved off 0.
 
 Ctrl-C publishes one final passive command (`K=0`, `D=TORQUE_DAMPING`,
 `effort=0`) — actuator coasts under damping. For a real stop, drive
-the FSM back to DAMPING from the gamepad. The runner exiting just
+the FSM back to DAMPING from the gamepad. The controller exiting just
 releases the topic; `RemotePolicyController`'s stale-command fallback
 (100 ms) catches it as fault recovery, not normal shutdown.
 

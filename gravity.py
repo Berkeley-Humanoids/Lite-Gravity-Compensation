@@ -64,10 +64,20 @@ class JointInfo:
 
 
 def load_model_path() -> str:
+    """Return the filesystem path to the Lite dummy MuJoCo (MJCF) model."""
     return str(load_asset(LITE_DUMMY_MJCF))
 
 
 def build_joint_info(model: mujoco.MjModel) -> dict[str, JointInfo]:
+    """Map each joint name to its qpos/dof indices and position limits.
+
+    Args:
+      model: Loaded MuJoCo model.
+
+    Returns:
+      Dict keyed by joint name; position limits are in radians (``±inf``
+      when the joint is unlimited).
+    """
     info: dict[str, JointInfo] = {}
     for joint_id in range(model.njnt):
         name = model.joint(joint_id).name
@@ -111,6 +121,11 @@ def build_published_joint_mapping(
 
 
 def world_child_subtree_ids(model: mujoco.MjModel) -> list[int]:
+    """Return body ids whose parent is the world body.
+
+    These are the roots of each kinematic subtree attached to the world;
+    ``compensate_gravity`` sums the gravity force over each one.
+    """
     return [b for b in range(1, model.nbody) if model.body_parentid[b] == 0]
 
 
